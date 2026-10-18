@@ -1,0 +1,1382 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Návyky, Tréninkový deník & Relativní síla</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .check-btn { transition: all 0.15s ease-in-out; }
+        .check-btn:active { transform: scale(0.9); }
+        .heatmap-scroll::-webkit-scrollbar { height: 6px; }
+        .heatmap-scroll::-webkit-scrollbar-track { background: #1e293b; border-radius: 4px; }
+        .heatmap-scroll::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen p-4 md:p-8 font-sans">
+
+    <div class="max-w-6xl mx-auto space-y-6">
+        
+        <!-- Hlavička a navigace -->
+        <header class="flex flex-col lg:flex-row justify-between items-start lg:items-center bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg gap-4">
+            <div>
+                <h1 class="text-2xl md:text-3xl font-bold text-white tracking-tight">Návyky, Tréninky & Forma</h1>
+                <p class="text-slate-400 text-sm mt-1">Denní cíle, silová progrese, relativní síla (× BW) a vývoj tělesné váhy</p>
+            </div>
+            
+            <div class="flex flex-wrap items-center gap-3 w-full lg:w-auto justify-between lg:justify-end">
+                <!-- Přepínač 3 sekcí -->
+                <div class="flex flex-wrap bg-slate-900 p-1.5 rounded-xl border border-slate-700 gap-1">
+                    <button onclick="switchTab('habits')" id="tab-btn-habits" class="px-3.5 py-2 rounded-lg text-sm font-semibold transition bg-emerald-600 text-white shadow">
+                        📅 Návyky
+                    </button>
+                    <button onclick="switchTab('workouts')" id="tab-btn-workouts" class="px-3.5 py-2 rounded-lg text-sm font-semibold transition text-slate-400 hover:text-white">
+                        🏋️ Tréninky & Síla
+                    </button>
+                    <button onclick="switchTab('weight')" id="tab-btn-weight" class="px-3.5 py-2 rounded-lg text-sm font-semibold transition text-slate-400 hover:text-white">
+                        ⚖️ Tělesná váha
+                    </button>
+                </div>
+
+                <!-- Export / Import -->
+                <div class="flex gap-2">
+                    <button onclick="exportAllData()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs px-3 py-2.5 rounded-xl border border-slate-600 transition" title="Stáhnout kompletní zálohu (JSON)">
+                        ⬇️ Export
+                    </button>
+                    <label class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs px-3 py-2.5 rounded-xl border border-slate-600 transition cursor-pointer" title="Nahrát zálohu ze souboru JSON">
+                        ⬆️ Import
+                        <input type="file" id="import-file" accept=".json" onchange="importAllData(event)" class="hidden">
+                    </label>
+                </div>
+            </div>
+        </header>
+
+        <!-- ========================================== -->
+        <!-- SEKCE 1: NÁVYKY A KALENDÁŘNÍ HEATMAPA      -->
+        <!-- ========================================== -->
+        <div id="section-habits" class="space-y-6">
+            
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div class="bg-slate-800 p-4 rounded-2xl border border-slate-700 text-center">
+                    <span class="text-xs text-slate-400 block uppercase tracking-wider">Splněno ve vybraném týdnu</span>
+                    <span id="total-rate" class="text-2xl font-bold text-emerald-400 mt-1 block">0 %</span>
+                </div>
+                <div class="bg-slate-800 p-4 rounded-2xl border border-slate-700 text-center">
+                    <span class="text-xs text-slate-400 block uppercase tracking-wider">Nejdelší aktivní série</span>
+                    <span id="best-streak" class="text-2xl font-bold text-amber-400 mt-1 block">0 🔥</span>
+                </div>
+                <div class="bg-slate-800 p-4 rounded-2xl border border-slate-700 text-center">
+                    <span class="text-xs text-slate-400 block uppercase tracking-wider">Celkem splněno za rok</span>
+                    <span id="yearly-total" class="text-2xl font-bold text-sky-400 mt-1 block">0 ✓</span>
+                </div>
+            </div>
+
+            <div class="flex flex-col lg:flex-row justify-between gap-4">
+                <div class="flex flex-col sm:flex-row gap-3 flex-1">
+                    <input type="text" id="new-habit-input" placeholder="Zadej nový denní cíl..." 
+                           class="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500">
+                    <button onclick="addHabit()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-6 py-3 rounded-xl transition shadow-md whitespace-nowrap">
+                        + Přidat cíl
+                    </button>
+                </div>
+
+                <div class="flex items-center justify-between sm:justify-end gap-2 bg-slate-800 px-3 py-2 rounded-xl border border-slate-700">
+                    <button onclick="changeWeek(-1)" class="p-2 hover:bg-slate-700 rounded-lg text-slate-300 transition">◀</button>
+                    <span id="week-label" class="text-sm font-medium px-2 min-w-[165px] text-center text-slate-200">Tento týden</span>
+                    <button onclick="changeWeek(1)" id="next-week-btn" class="p-2 hover:bg-slate-700 rounded-lg text-slate-300 transition">▶</button>
+                    <button onclick="resetToCurrentWeek()" class="text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 px-2.5 py-1.5 rounded-lg transition ml-1">Dnes</button>
+                </div>
+            </div>
+
+            <div class="bg-slate-800 rounded-2xl border border-slate-700 shadow-lg overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr id="table-header-row" class="border-b border-slate-700 text-slate-400 text-xs uppercase tracking-wider"></tr>
+                    </thead>
+                    <tbody id="habits-body" class="divide-y divide-slate-700/60 text-sm"></tbody>
+                </table>
+            </div>
+
+            <!-- Kalendářní Heatmapa -->
+            <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg space-y-4">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div>
+                        <h2 class="text-lg font-semibold text-slate-200">Roční přehled aktivity (posledních 52 týdnů)</h2>
+                        <p class="text-xs text-slate-400">Uložení tréninku v deníku automaticky odškrtne tréninkový návyk i zde v mřížce</p>
+                    </div>
+                    <select id="heatmap-filter" onchange="renderHeatmap()" class="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500">
+                        <option value="all">Všechny návyky dohromady</option>
+                    </select>
+                </div>
+
+                <div class="overflow-x-auto heatmap-scroll pb-2">
+                    <div class="min-w-[780px]">
+                        <div id="heatmap-months" class="flex text-[11px] text-slate-400 mb-1 pl-8 relative h-4"></div>
+                        <div class="flex gap-2">
+                            <div class="grid grid-rows-7 gap-[3px] text-[10px] text-slate-500 pr-1 text-right leading-[12px]">
+                                <span>Po</span><span></span><span>St</span><span></span><span>Pá</span><span></span><span>Ne</span>
+                            </div>
+                            <div id="heatmap-grid" class="grid grid-rows-7 grid-flow-col gap-[3px] flex-1"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between text-xs text-slate-400 pt-2 border-t border-slate-700/60">
+                    <span id="heatmap-summary-text">Celkem splněno: 0 aktivit</span>
+                    <div class="flex items-center gap-1.5">
+                        <span>Méně</span>
+                        <span class="w-3 h-3 rounded-[2px] bg-slate-900 border border-slate-700/80 inline-block"></span>
+                        <span class="w-3 h-3 rounded-[2px] bg-emerald-950 border border-emerald-800 inline-block"></span>
+                        <span class="w-3 h-3 rounded-[2px] bg-emerald-700 inline-block"></span>
+                        <span class="w-3 h-3 rounded-[2px] bg-emerald-500 inline-block"></span>
+                        <span class="w-3 h-3 rounded-[2px] bg-emerald-400 inline-block"></span>
+                        <span>Více</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg">
+                    <h2 class="text-lg font-semibold mb-4 text-slate-200">Plnění cílů ve vybraném týdnu</h2>
+                    <canvas id="dailyChart" height="200"></canvas>
+                </div>
+                <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg">
+                    <h2 class="text-lg font-semibold mb-4 text-slate-200">Aktuální souvislé série (dny)</h2>
+                    <canvas id="streakChart" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- SEKCE 2: TRÉNINKOVÝ DENÍK & STATISTIKY     -->
+        <!-- ========================================== -->
+        <div id="section-workouts" class="space-y-6 hidden">
+            
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                
+                <!-- Levý sloupec: Zápis tréninku -->
+                <div class="lg:col-span-5 bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg space-y-5">
+                    <div class="flex justify-between items-center border-b border-slate-700 pb-3">
+                        <h2 class="text-lg font-bold text-white">Zapsat trénink</h2>
+                        <span id="current-bw-badge" class="text-xs bg-slate-900 text-sky-400 border border-slate-700 px-2.5 py-1 rounded-full font-mono">
+                            Váha: -- kg
+                        </span>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="text-xs text-slate-400 block mb-1">Datum tréninku</label>
+                            <input type="date" id="wo-date" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-400 block mb-1">Typ tréninku / Split</label>
+                            <input type="text" id="wo-title" placeholder="např. Push, Pull, Legs..." class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500">
+                        </div>
+                    </div>
+
+                    <div>
+                        <span class="text-xs text-slate-400 block mb-1.5">Rychlé načtení šablony:</span>
+                        <div class="flex flex-wrap gap-1.5">
+                            <button onclick="loadTemplate('Push')" class="text-xs bg-slate-900 hover:bg-slate-700 text-slate-300 border border-slate-700 px-2.5 py-1.5 rounded-lg transition">Push</button>
+                            <button onclick="loadTemplate('Pull')" class="text-xs bg-slate-900 hover:bg-slate-700 text-slate-300 border border-slate-700 px-2.5 py-1.5 rounded-lg transition">Pull</button>
+                            <button onclick="loadTemplate('Legs')" class="text-xs bg-slate-900 hover:bg-slate-700 text-slate-300 border border-slate-700 px-2.5 py-1.5 rounded-lg transition">Legs</button>
+                            <button onclick="loadTemplate('Upper')" class="text-xs bg-slate-900 hover:bg-slate-700 text-slate-300 border border-slate-700 px-2.5 py-1.5 rounded-lg transition">Upper</button>
+                            <button onclick="loadTemplate('Lower')" class="text-xs bg-slate-900 hover:bg-slate-700 text-slate-300 border border-slate-700 px-2.5 py-1.5 rounded-lg transition">Lower</button>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-900/70 p-4 rounded-xl border border-slate-700/80 space-y-3">
+                        <div class="flex gap-2">
+                            <input type="text" id="exercise-name-input" list="known-exercises" placeholder="Název cviku (např. Bench Press)" 
+                                   class="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500">
+                            <datalist id="known-exercises"></datalist>
+                            <button onclick="addExerciseToBuilder()" class="bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold px-3 py-2 rounded-lg transition whitespace-nowrap">
+                                + Přidat cvik
+                            </button>
+                        </div>
+
+                        <div id="workout-builder-list" class="space-y-3 max-h-[340px] overflow-y-auto pr-1"></div>
+                    </div>
+
+                    <button onclick="saveWorkout()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl shadow-lg transition">
+                        💾 Uložit trénink a přepočítat statistiky
+                    </button>
+                </div>
+
+                <!-- Pravý sloupec: Statistiky konkrétního cviku + Relativní síla -->
+                <div class="lg:col-span-7 bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg flex flex-col justify-between space-y-5">
+                    <div>
+                        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-700 pb-4">
+                            <div>
+                                <h2 class="text-lg font-bold text-white">Statistiky a relativní síla (× BW)</h2>
+                                <p class="text-xs text-slate-400">Automaticky propojeno s tvou tělesnou vahou v den tréninku</p>
+                            </div>
+                            <select id="stat-exercise-select" onchange="renderExerciseStats()" class="bg-slate-900 border border-slate-700 text-emerald-400 font-semibold text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:border-emerald-500"></select>
+                        </div>
+
+                        <!-- Karty rekordů včetně × BW -->
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 my-5">
+                            <div class="bg-slate-900/90 p-3.5 rounded-xl border border-slate-700/80">
+                                <span class="text-[11px] text-slate-400 uppercase block">Max váha (PR)</span>
+                                <span id="stat-max-weight" class="text-xl font-bold text-emerald-400 mt-1 block">0 kg</span>
+                                <span id="stat-max-bw-ratio" class="text-xs font-semibold text-emerald-300/80 mt-0.5 block">0.00× BW</span>
+                            </div>
+                            <div class="bg-slate-900/90 p-3.5 rounded-xl border border-slate-700/80">
+                                <span class="text-[11px] text-slate-400 uppercase block">Odhadované 1RM</span>
+                                <span id="stat-est-1rm" class="text-xl font-bold text-amber-400 mt-1 block">0 kg</span>
+                                <span id="stat-1rm-bw-ratio" class="text-xs font-semibold text-amber-300/80 mt-0.5 block">0.00× BW</span>
+                            </div>
+                            <div class="bg-slate-900/90 p-3.5 rounded-xl border border-slate-700/80">
+                                <span class="text-[11px] text-slate-400 uppercase block">Aktuální poměr</span>
+                                <span id="stat-latest-bw-ratio" class="text-xl font-bold text-rose-400 mt-1 block">0.00× BW</span>
+                                <span id="stat-latest-bw-info" class="text-[11px] text-slate-500 mt-0.5 block">Poslední trénink</span>
+                            </div>
+                            <div class="bg-slate-900/90 p-3.5 rounded-xl border border-slate-700/80">
+                                <span class="text-[11px] text-slate-400 uppercase block">Max objem</span>
+                                <span id="stat-max-vol" class="text-xl font-bold text-sky-400 mt-1 block">0 kg</span>
+                                <span id="stat-sessions-count" class="text-[11px] text-slate-400 mt-0.5 block">Odjeto: 0×</span>
+                            </div>
+                        </div>
+
+                        <!-- Přepínač metriky grafu (včetně Relativní síly × BW) -->
+                        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-2">
+                            <span class="text-xs text-slate-400 font-medium">Graf vývoje v čase:</span>
+                            <div class="flex flex-wrap gap-1 bg-slate-900 p-1 rounded-lg border border-slate-700 text-xs">
+                                <button onclick="setChartMetric('maxWeight')" id="metric-maxWeight" class="px-2.5 py-1 rounded bg-emerald-600 text-white font-medium">Max váha (kg)</button>
+                                <button onclick="setChartMetric('bwRatio')" id="metric-bwRatio" class="px-2.5 py-1 rounded text-slate-400 hover:text-white">Relativní síla (× BW)</button>
+                                <button onclick="setChartMetric('est1RM')" id="metric-est1RM" class="px-2.5 py-1 rounded text-slate-400 hover:text-white">Odhad 1RM (kg)</button>
+                                <button onclick="setChartMetric('volume')" id="metric-volume" class="px-2.5 py-1 rounded text-slate-400 hover:text-white">Objem (kg)</button>
+                            </div>
+                        </div>
+
+                        <div class="bg-slate-900/50 p-3 rounded-xl border border-slate-700/50">
+                            <canvas id="exerciseChart" height="185"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="border-t border-slate-700 pt-4">
+                        <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Historie cviku a poměru k tělesné váze</h3>
+                        <div id="exercise-history-log" class="space-y-1.5 max-h-[135px] overflow-y-auto text-xs pr-1"></div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg space-y-4">
+                <h2 class="text-lg font-bold text-white">Historie odjetých tréninků</h2>
+                <div id="workout-history-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+            </div>
+
+        </div>
+
+        <!-- ========================================== -->
+        <!-- SEKCE 3: RANNÍ TĚLESNÁ VÁHA A TREND FORMY  -->
+        <!-- ========================================== -->
+        <div id="section-weight" class="space-y-6 hidden">
+            
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-lg">
+                    <span class="text-xs text-slate-400 uppercase tracking-wider block">Aktuální váha</span>
+                    <span id="bw-current" class="text-2xl md:text-3xl font-bold text-emerald-400 mt-1 block">-- kg</span>
+                    <span id="bw-last-date" class="text-[11px] text-slate-500 mt-1 block">Zatím bez záznamu</span>
+                </div>
+                <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-lg">
+                    <span class="text-xs text-slate-400 uppercase tracking-wider block">7denní průměr (Trend)</span>
+                    <span id="bw-avg7" class="text-2xl md:text-3xl font-bold text-amber-400 mt-1 block">-- kg</span>
+                    <span class="text-[11px] text-slate-500 mt-1 block">Eliminuje denní výkyvy vody</span>
+                </div>
+                <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-lg">
+                    <span class="text-xs text-slate-400 uppercase tracking-wider block">Celková změna</span>
+                    <span id="bw-change" class="text-2xl md:text-3xl font-bold text-sky-400 mt-1 block">0.0 kg</span>
+                    <span class="text-[11px] text-slate-500 mt-1 block">Od prvního záznamu</span>
+                </div>
+                <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-lg">
+                    <span class="text-xs text-slate-400 uppercase tracking-wider block">Rozpětí (Min / Max)</span>
+                    <span id="bw-minmax" class="text-xl md:text-2xl font-bold text-purple-400 mt-1 block">-- / -- kg</span>
+                    <span id="bw-count" class="text-[11px] text-slate-500 mt-1 block">Celkem 0 vážení</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                
+                <div class="lg:col-span-4 bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg flex flex-col justify-between space-y-6">
+                    <div class="space-y-4">
+                        <h2 class="text-lg font-bold text-white border-b border-slate-700 pb-3">Zapsat ranní váhu</h2>
+                        
+                        <div>
+                            <label class="text-xs text-slate-400 block mb-1">Datum vážení</label>
+                            <input type="date" id="bw-date-input" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500">
+                        </div>
+
+                        <div>
+                            <label class="text-xs text-slate-400 block mb-1">Ranní váha (kg)</label>
+                            <input type="number" step="0.1" id="bw-weight-input" placeholder="např. 89.5" 
+                                   class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500">
+                        </div>
+
+                        <div>
+                            <label class="text-xs text-slate-400 block mb-1">Poznámka (volitelné)</label>
+                            <input type="text" id="bw-note-input" placeholder="např. ráno nalačno..." 
+                                   class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500">
+                        </div>
+
+                        <button onclick="addBodyWeight()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl shadow-lg transition">
+                            + Uložit váhu
+                        </button>
+                    </div>
+
+                    <div class="border-t border-slate-700 pt-4">
+                        <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Historie vážení</h3>
+                        <div id="bw-history-list" class="space-y-2 max-h-[260px] overflow-y-auto pr-1 text-xs"></div>
+                    </div>
+                </div>
+
+                <div class="lg:col-span-8 bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-lg flex flex-col justify-between">
+                    <div>
+                        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-700 pb-4 mb-4">
+                            <div>
+                                <h2 class="text-lg font-bold text-white">Vývoj tělesné váhy a 7denní klouzavý průměr</h2>
+                                <p class="text-xs text-slate-400">Tato data slouží i pro automatický výpočet relativní síly (× BW) u všech tvých cviků</p>
+                            </div>
+                        </div>
+                        <div class="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
+                            <canvas id="bodyWeightChart" height="250"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 bg-slate-900/70 p-4 rounded-xl border border-slate-700/60 text-xs text-slate-400 flex items-center gap-3">
+                        <span class="text-xl">💡</span>
+                        <p><strong>Propojení se silou:</strong> Kdykoliv zapíšeš novou ranní váhu, přepočítá se tvůj aktuální poměr síly k tělesné hmotnosti (např. Bench Press <code>1.23× BW</code> nebo Hack Squat <code>1.68× BW</code>).</p>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <script>
+        const dayNames = ['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'];
+        const monthNames = ['Led', 'Úno', 'Bře', 'Dub', 'Kvě', 'Čvn', 'Čvc', 'Srp', 'Zář', 'Říj', 'Lis', 'Pro'];
+        
+        let currentWeekOffset = 0;
+        let dailyChartInstance = null;
+        let streakChartInstance = null;
+        let exerciseChartInstance = null;
+        let bodyWeightChartInstance = null;
+        let currentChartMetric = 'maxWeight'; // 'maxWeight' | 'bwRatio' | 'est1RM' | 'volume'
+
+        const workoutTemplates = {
+            'Push': [
+                { name: 'Bench Press', sets: [{ weight: 90, reps: 8 }, { weight: 95, reps: 6 }, { weight: 100, reps: 4 }] },
+                { name: 'Tlaky s jednoručkami na šikmé', sets: [{ weight: 32, reps: 10 }, { weight: 32, reps: 8 }] },
+                { name: 'Upažování s jednoručkami', sets: [{ weight: 14, reps: 12 }, { weight: 14, reps: 12 }] },
+                { name: 'Tricepsové stahování kladky', sets: [{ weight: 35, reps: 12 }, { weight: 40, reps: 10 }] }
+            ],
+            'Pull': [
+                { name: 'Shyby', sets: [{ weight: 0, reps: 10 }, { weight: 10, reps: 8 }, { weight: 10, reps: 6 }] },
+                { name: 'Přítahy činky v předklonu', sets: [{ weight: 80, reps: 10 }, { weight: 85, reps: 8 }] },
+                { name: 'Bicepsový zdvih s činkou', sets: [{ weight: 40, reps: 10 }, { weight: 42.5, reps: 8 }] }
+            ],
+            'Legs': [
+                { name: 'Hack dřep (Hack Squat)', sets: [{ weight: 120, reps: 10 }, { weight: 140, reps: 8 }, { weight: 150, reps: 6 }] },
+                { name: 'Rumunský mrtvý tah (RDL)', sets: [{ weight: 110, reps: 10 }, { weight: 120, reps: 8 }, { weight: 125, reps: 8 }] },
+                { name: 'Předkopávání', sets: [{ weight: 65, reps: 12 }, { weight: 70, reps: 12 }] }
+            ],
+            'Upper': [
+                { name: 'Bench Press', sets: [{ weight: 95, reps: 6 }, { weight: 100, reps: 5 }] },
+                { name: 'Shyby', sets: [{ weight: 10, reps: 8 }, { weight: 10, reps: 8 }] },
+                { name: 'Tlaky nad hlavu (OHP)', sets: [{ weight: 55, reps: 8 }, { weight: 60, reps: 6 }] }
+            ],
+            'Lower': [
+                { name: 'Hack dřep (Hack Squat)', sets: [{ weight: 130, reps: 8 }, { weight: 145, reps: 8 }] },
+                { name: 'Rumunský mrtvý tah (RDL)', sets: [{ weight: 115, reps: 8 }, { weight: 125, reps: 8 }] },
+                { name: 'Výpony na lýtka', sets: [{ weight: 80, reps: 15 }, { weight: 80, reps: 15 }] }
+            ]
+        };
+
+        let currentBuilderExercises = [];
+
+        function formatDateKey(date) {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+
+        function getMonday(offsetWeeks = 0) {
+            const now = new Date();
+            now.setHours(0, 0, 0, 0);
+            const day = now.getDay();
+            const diff = now.getDate() - day + (day === 0 ? -6 : 1) + (offsetWeeks * 7);
+            return new Date(now.setDate(diff));
+        }
+
+        function createDefaultHabits() {
+            const initial = [
+                { id: 1, name: 'Silový trénink / Posilovna', history: {} },
+                { id: 2, name: 'Běh nebo kolo (kardio)', history: {} },
+                { id: 3, name: 'Příprava do školy / Studium', history: {} },
+                { id: 4, name: 'Spánek alespoň 7,5 hodiny', history: {} }
+            ];
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            for (let i = 45; i >= 0; i--) {
+                const d = new Date(today);
+                d.setDate(today.getDate() - i);
+                const key = formatDateKey(d);
+                if (Math.random() > 0.4) initial[0].history[key] = true;
+                if (Math.random() > 0.5) initial[1].history[key] = true;
+                if (Math.random() > 0.3) initial[2].history[key] = true;
+                if (Math.random() > 0.25) initial[3].history[key] = true;
+            }
+            return initial;
+        }
+
+        function createDefaultWorkouts() {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const d1 = new Date(today); d1.setDate(today.getDate() - 21);
+            const d2 = new Date(today); d2.setDate(today.getDate() - 14);
+            const d3 = new Date(today); d3.setDate(today.getDate() - 7);
+            const d4 = new Date(today); d4.setDate(today.getDate() - 2);
+
+            return [
+                {
+                    id: 101, date: formatDateKey(d1), title: 'Push A',
+                    exercises: [
+                        { name: 'Bench Press', sets: [{ weight: 95, reps: 5 }, { weight: 100, reps: 3 }, { weight: 90, reps: 8 }] },
+                        { name: 'Tlaky s jednoručkami na šikmé', sets: [{ weight: 30, reps: 10 }, { weight: 32, reps: 8 }] }
+                    ]
+                },
+                {
+                    id: 102, date: formatDateKey(d2), title: 'Legs A',
+                    exercises: [
+                        { name: 'Hack dřep (Hack Squat)', sets: [{ weight: 130, reps: 8 }, { weight: 140, reps: 6 }] },
+                        { name: 'Rumunský mrtvý tah (RDL)', sets: [{ weight: 110, reps: 8 }, { weight: 115, reps: 8 }] }
+                    ]
+                },
+                {
+                    id: 103, date: formatDateKey(d3), title: 'Push B',
+                    exercises: [
+                        { name: 'Bench Press', sets: [{ weight: 100, reps: 4 }, { weight: 105, reps: 2 }, { weight: 95, reps: 6 }] },
+                        { name: 'Tlaky s jednoručkami na šikmé', sets: [{ weight: 34, reps: 8 }, { weight: 34, reps: 8 }] }
+                    ]
+                },
+                {
+                    id: 104, date: formatDateKey(d4), title: 'Upper Rekord',
+                    exercises: [
+                        { name: 'Bench Press', sets: [{ weight: 102.5, reps: 3 }, { weight: 110, reps: 1 }, { weight: 95, reps: 7 }] },
+                        { name: 'Rumunský mrtvý tah (RDL)', sets: [{ weight: 120, reps: 8 }, { weight: 125, reps: 6 }] },
+                        { name: 'Hack dřep (Hack Squat)', sets: [{ weight: 140, reps: 8 }, { weight: 150, reps: 6 }] }
+                    ]
+                }
+            ];
+        }
+
+        function createDefaultBodyWeights() {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const sampleWeights = [90.6, 90.4, 90.7, 90.2, 90.0, 90.3, 89.9, 89.7, 90.1, 89.6, 89.5, 89.8, 89.4, 89.3];
+            return sampleWeights.map((w, idx) => {
+                const d = new Date(today);
+                d.setDate(today.getDate() - (sampleWeights.length - 1 - idx));
+                return {
+                    date: formatDateKey(d),
+                    weight: w,
+                    note: idx === sampleWeights.length - 1 ? 'Ráno nalačno' : ''
+                };
+            });
+        }
+
+        let habits = JSON.parse(localStorage.getItem('my_habits_v3')) || createDefaultHabits();
+        let workouts = JSON.parse(localStorage.getItem('my_workouts_v3')) || createDefaultWorkouts();
+        let bodyWeights = JSON.parse(localStorage.getItem('my_bodyweights_v3')) || createDefaultBodyWeights();
+
+        function saveAll() {
+            localStorage.setItem('my_habits_v3', JSON.stringify(habits));
+            localStorage.setItem('my_workouts_v3', JSON.stringify(workouts));
+            localStorage.setItem('my_bodyweights_v3', JSON.stringify(bodyWeights));
+        }
+
+        // Dohledání tělesné váhy platné k danému datu tréninku (nejbližší záznam <= dateKey)
+        function getBodyWeightForDate(dateKey) {
+            if (!bodyWeights || bodyWeights.length === 0) return 90.0; // Výchozí záloha
+            let validWeight = bodyWeights[0].weight;
+            for (const bw of bodyWeights) {
+                if (bw.date <= dateKey) {
+                    validWeight = bw.weight;
+                } else {
+                    break;
+                }
+            }
+            return validWeight;
+        }
+
+        // Rozpoznání cviku s vlastní vahou (kde zadaná váha = přidaná zátěž na opasku)
+        function isBodyweightExercise(exName) {
+            const lower = exName.toLowerCase();
+            return lower.includes('shyb') || lower.includes('dip') || lower.includes('kliky') || lower.includes('pull-up') || lower.includes('chin-up');
+        }
+
+        // Výpočet násobku tělesné váhy (× BW)
+        function calcBwMultiplier(liftedWeight, bodyWeight, exName) {
+            if (!bodyWeight || bodyWeight <= 0) return 0;
+            const effectiveLoad = isBodyweightExercise(exName) ? (bodyWeight + liftedWeight) : liftedWeight;
+            return Math.round((effectiveLoad / bodyWeight) * 100) / 100;
+        }
+
+        function switchTab(tab) {
+            const sections = {
+                habits: document.getElementById('section-habits'),
+                workouts: document.getElementById('section-workouts'),
+                weight: document.getElementById('section-weight')
+            };
+            const buttons = {
+                habits: document.getElementById('tab-btn-habits'),
+                workouts: document.getElementById('tab-btn-workouts'),
+                weight: document.getElementById('tab-btn-weight')
+            };
+
+            Object.keys(sections).forEach(k => {
+                if (k === tab) {
+                    sections[k].classList.remove('hidden');
+                    buttons[k].className = 'px-3.5 py-2 rounded-lg text-sm font-semibold transition bg-emerald-600 text-white shadow';
+                } else {
+                    sections[k].classList.add('hidden');
+                    buttons[k].className = 'px-3.5 py-2 rounded-lg text-sm font-semibold transition text-slate-400 hover:text-white';
+                }
+            });
+
+            if (tab === 'habits') renderAllHabits();
+            if (tab === 'workouts') renderWorkoutSection();
+            if (tab === 'weight') renderBodyWeightSection();
+        }
+
+        // ==========================================
+        // LOGIKA RANNÍ TĚLESNÉ VÁHY
+        // ==========================================
+        function initBodyWeightForm() {
+            document.getElementById('bw-date-input').value = formatDateKey(new Date());
+        }
+
+        function addBodyWeight() {
+            const dateVal = document.getElementById('bw-date-input').value;
+            const weightVal = parseFloat(document.getElementById('bw-weight-input').value);
+            const noteVal = document.getElementById('bw-note-input').value.trim();
+
+            if (!dateVal || isNaN(weightVal) || weightVal <= 20 || weightVal > 300) {
+                alert('Zadej platné datum a reálnou tělesnou váhu v kg.');
+                return;
+            }
+
+            const existingIdx = bodyWeights.findIndex(item => item.date === dateVal);
+            if (existingIdx >= 0) {
+                bodyWeights[existingIdx].weight = weightVal;
+                bodyWeights[existingIdx].note = noteVal;
+            } else {
+                bodyWeights.push({ date: dateVal, weight: weightVal, note: noteVal });
+            }
+
+            bodyWeights.sort((a, b) => a.date.localeCompare(b.date));
+
+            document.getElementById('bw-weight-input').value = '';
+            document.getElementById('bw-note-input').value = '';
+
+            saveAll();
+            renderBodyWeightSection();
+        }
+
+        function deleteBodyWeight(dateKey) {
+            bodyWeights = bodyWeights.filter(item => item.date !== dateKey);
+            saveAll();
+            renderBodyWeightSection();
+        }
+
+        function renderBodyWeightSection() {
+            const listEl = document.getElementById('bw-history-list');
+            
+            if (bodyWeights.length === 0) {
+                document.getElementById('bw-current').textContent = '-- kg';
+                document.getElementById('bw-avg7').textContent = '-- kg';
+                document.getElementById('bw-change').textContent = '0.0 kg';
+                document.getElementById('bw-minmax').textContent = '-- / -- kg';
+                document.getElementById('bw-count').textContent = 'Celkem 0 vážení';
+                listEl.innerHTML = `<p class="text-slate-500 text-center py-4">Zatím žádné záznamy váhy.</p>`;
+                if (bodyWeightChartInstance) bodyWeightChartInstance.destroy();
+                return;
+            }
+
+            const latest = bodyWeights[bodyWeights.length - 1];
+            const first = bodyWeights[0];
+            const diff = Math.round((latest.weight - first.weight) * 10) / 10;
+            const diffSign = diff > 0 ? '+' : '';
+
+            const movingAverages = bodyWeights.map((_, idx) => {
+                const start = Math.max(0, idx - 6);
+                const slice = bodyWeights.slice(start, idx + 1);
+                const sum = slice.reduce((acc, cur) => acc + cur.weight, 0);
+                return Math.round((sum / slice.length) * 10) / 10;
+            });
+
+            const currentAvg7 = movingAverages[movingAverages.length - 1];
+            const weightsOnly = bodyWeights.map(b => b.weight);
+            const minW = Math.min(...weightsOnly);
+            const maxW = Math.max(...weightsOnly);
+
+            document.getElementById('bw-current').textContent = `${latest.weight.toFixed(1)} kg`;
+            document.getElementById('bw-last-date').textContent = `Zapsáno: ${latest.date}`;
+            document.getElementById('bw-avg7').textContent = `${currentAvg7.toFixed(1)} kg`;
+            
+            const changeEl = document.getElementById('bw-change');
+            changeEl.textContent = `${diffSign}${diff.toFixed(1)} kg`;
+            changeEl.className = `text-2xl md:text-3xl font-bold mt-1 block ${diff <= 0 ? 'text-sky-400' : 'text-amber-400'}`;
+
+            document.getElementById('bw-minmax').textContent = `${minW.toFixed(1)} / ${maxW.toFixed(1)} kg`;
+            document.getElementById('bw-count').textContent = `Celkem ${bodyWeights.length} vážení`;
+
+            listEl.innerHTML = bodyWeights.slice().reverse().map((item, idx, arr) => {
+                const prevItem = arr[idx + 1];
+                let deltaHtml = '';
+                if (prevItem) {
+                    const d = Math.round((item.weight - prevItem.weight) * 10) / 10;
+                    const sign = d > 0 ? '+' : '';
+                    const col = d === 0 ? 'text-slate-500' : (d < 0 ? 'text-emerald-400' : 'text-amber-400');
+                    deltaHtml = `<span class="${col} font-mono ml-2">(${sign}${d.toFixed(1)})</span>`;
+                }
+
+                return `
+                    <div class="flex justify-between items-center bg-slate-900/80 px-3 py-2 rounded-lg border border-slate-700/60">
+                        <div>
+                            <span class="text-slate-400 font-mono mr-2">${item.date}</span>
+                            <span class="text-white font-bold">${item.weight.toFixed(1)} kg</span>
+                            ${deltaHtml}
+                            ${item.note ? `<span class="text-slate-400 block text-[11px] italic">${item.note}</span>` : ''}
+                        </div>
+                        <button onclick="deleteBodyWeight('${item.date}')" class="text-slate-500 hover:text-rose-400 px-1">✕</button>
+                    </div>
+                `;
+            }).join('');
+
+            const labels = bodyWeights.map(b => {
+                const parts = b.date.split('-');
+                return `${parts[2]}.${parts[1]}.`;
+            });
+
+            const ctx = document.getElementById('bodyWeightChart').getContext('2d');
+            if (bodyWeightChartInstance) bodyWeightChartInstance.destroy();
+            bodyWeightChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Ranní váha (kg)',
+                            data: weightsOnly,
+                            borderColor: '#10b981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.12)',
+                            borderWidth: 2.5,
+                            pointBackgroundColor: '#34d399',
+                            pointRadius: 4,
+                            fill: true,
+                            tension: 0.2
+                        },
+                        {
+                            label: '7denní průměr (kg)',
+                            data: movingAverages,
+                            borderColor: '#f59e0b',
+                            borderDash: [6, 4],
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            fill: false,
+                            tension: 0.35
+                        }
+                    ]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            suggestedMin: Math.floor(minW - 1),
+                            suggestedMax: Math.ceil(maxW + 1),
+                            ticks: { color: '#94a3b8' },
+                            grid: { color: '#334155' }
+                        },
+                        x: {
+                            ticks: { color: '#94a3b8' },
+                            grid: { display: false }
+                        }
+                    },
+                    plugins: {
+                        legend: { labels: { color: '#cbd5e1', font: { size: 12 } } }
+                    }
+                }
+            });
+        }
+
+        // ==========================================
+        // LOGIKA TRÉNINKOVÉHO DENÍKU A STATISTIK
+        // ==========================================
+        function initWorkoutForm() {
+            document.getElementById('wo-date').value = formatDateKey(new Date());
+            if (currentBuilderExercises.length === 0) {
+                loadTemplate('Push');
+            }
+        }
+
+        function loadTemplate(templateName) {
+            document.getElementById('wo-title').value = templateName + ' trénink';
+            currentBuilderExercises = JSON.parse(JSON.stringify(workoutTemplates[templateName] || []));
+            renderWorkoutBuilder();
+        }
+
+        function addExerciseToBuilder() {
+            const input = document.getElementById('exercise-name-input');
+            const name = input.value.trim();
+            if (!name) return;
+            currentBuilderExercises.push({
+                name: name,
+                sets: [{ weight: 60, reps: 10 }]
+            });
+            input.value = '';
+            renderWorkoutBuilder();
+        }
+
+        function removeExerciseFromBuilder(exIdx) {
+            currentBuilderExercises.splice(exIdx, 1);
+            renderWorkoutBuilder();
+        }
+
+        function addSetToExercise(exIdx) {
+            const sets = currentBuilderExercises[exIdx].sets;
+            const lastSet = sets.length > 0 ? sets[sets.length - 1] : { weight: 60, reps: 10 };
+            sets.push({ weight: lastSet.weight, reps: lastSet.reps });
+            renderWorkoutBuilder();
+        }
+
+        function removeSetFromExercise(exIdx, setIdx) {
+            currentBuilderExercises[exIdx].sets.splice(setIdx, 1);
+            if (currentBuilderExercises[exIdx].sets.length === 0) {
+                currentBuilderExercises.splice(exIdx, 1);
+            }
+            renderWorkoutBuilder();
+        }
+
+        function updateSetValue(exIdx, setIdx, field, val) {
+            currentBuilderExercises[exIdx].sets[setIdx][field] = parseFloat(val) || 0;
+            renderWorkoutBuilder();
+        }
+
+        function renderWorkoutBuilder() {
+            const container = document.getElementById('workout-builder-list');
+            container.innerHTML = '';
+
+            const woDate = document.getElementById('wo-date').value || formatDateKey(new Date());
+            const activeBw = getBodyWeightForDate(woDate);
+            document.getElementById('current-bw-badge').textContent = `Tvá váha: ${activeBw.toFixed(1)} kg`;
+
+            if (currentBuilderExercises.length === 0) {
+                container.innerHTML = `<p class="text-xs text-slate-500 text-center py-4">Zatím žádné cviky. Vyber šablonu výše nebo přidej cvik ručně.</p>`;
+                return;
+            }
+
+            currentBuilderExercises.forEach((ex, exIdx) => {
+                const box = document.createElement('div');
+                box.className = 'bg-slate-800 p-3 rounded-xl border border-slate-700 space-y-2';
+
+                let setsHtml = '';
+                ex.sets.forEach((s, setIdx) => {
+                    const ratio = calcBwMultiplier(s.weight, activeBw, ex.name);
+                    setsHtml += `
+                        <div class="flex items-center gap-2 text-xs">
+                            <span class="text-slate-500 w-5">#${setIdx + 1}</span>
+                            <input type="number" step="0.5" value="${s.weight}" onchange="updateSetValue(${exIdx}, ${setIdx}, 'weight', this.value)"
+                                   class="w-16 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white text-center">
+                            <span class="text-slate-400">kg ×</span>
+                            <input type="number" value="${s.reps}" onchange="updateSetValue(${exIdx}, ${setIdx}, 'reps', this.value)"
+                                   class="w-14 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white text-center">
+                            <span class="text-slate-500 font-mono text-[11px] ml-1" title="Poměr k tělesné váze">(${ratio.toFixed(2)}× BW)</span>
+                            <button onclick="removeSetFromExercise(${exIdx}, ${setIdx})" class="ml-auto text-slate-500 hover:text-rose-400 px-1">✕</button>
+                        </div>
+                    `;
+                });
+
+                box.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <span class="font-semibold text-sm text-emerald-400">${ex.name}</span>
+                        <div class="flex gap-2">
+                            <button onclick="addSetToExercise(${exIdx})" class="text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 px-2 py-0.5 rounded">+ Série</button>
+                            <button onclick="removeExerciseFromBuilder(${exIdx})" class="text-xs text-slate-500 hover:text-rose-400">Smazat</button>
+                        </div>
+                    </div>
+                    <div class="space-y-1.5 pt-1">${setsHtml}</div>
+                `;
+                container.appendChild(box);
+            });
+        }
+
+        function saveWorkout() {
+            const dateVal = document.getElementById('wo-date').value;
+            const titleVal = document.getElementById('wo-title').value.trim() || 'Silový trénink';
+
+            if (!dateVal || currentBuilderExercises.length === 0) {
+                alert('Vyplň datum a přidej alespoň jeden cvik.');
+                return;
+            }
+
+            workouts.push({
+                id: Date.now(),
+                date: dateVal,
+                title: titleVal,
+                exercises: JSON.parse(JSON.stringify(currentBuilderExercises))
+            });
+
+            workouts.sort((a, b) => a.date.localeCompare(b.date));
+
+            const gymHabit = habits.find(h => h.name.toLowerCase().includes('trénink') || h.name.toLowerCase().includes('posilovna') || h.name.toLowerCase().includes('cvičení'));
+            if (gymHabit) {
+                gymHabit.history[dateVal] = true;
+            } else if (habits.length > 0) {
+                habits[0].history[dateVal] = true;
+            }
+
+            saveAll();
+            renderWorkoutSection();
+            alert('Trénink byl uložen a zapsán i do kalendáře návyků!');
+        }
+
+        function deleteWorkout(id) {
+            if (confirm('Opravdu smazat tento záznam tréninku?')) {
+                workouts = workouts.filter(w => w.id !== id);
+                saveAll();
+                renderWorkoutSection();
+            }
+        }
+
+        function getAllUniqueExercises() {
+            const set = new Set();
+            workouts.forEach(w => {
+                w.exercises.forEach(ex => set.add(ex.name));
+            });
+            return Array.from(set);
+        }
+
+        function setChartMetric(metric) {
+            currentChartMetric = metric;
+            ['maxWeight', 'bwRatio', 'est1RM', 'volume'].forEach(m => {
+                const btn = document.getElementById('metric-' + m);
+                btn.className = (m === metric)
+                    ? 'px-2.5 py-1 rounded bg-emerald-600 text-white font-medium'
+                    : 'px-2.5 py-1 rounded text-slate-400 hover:text-white';
+            });
+            renderExerciseStats();
+        }
+
+        function renderWorkoutSection() {
+            const exercises = getAllUniqueExercises();
+            const datalist = document.getElementById('known-exercises');
+            datalist.innerHTML = exercises.map(e => `<option value="${e}">`).join('');
+
+            const select = document.getElementById('stat-exercise-select');
+            const prevSelected = select.value;
+            select.innerHTML = exercises.map(e => `<option value="${e}">${e}</option>`).join('');
+            if (exercises.includes(prevSelected)) {
+                select.value = prevSelected;
+            } else if (exercises.length > 0) {
+                select.value = exercises[0];
+            }
+
+            renderWorkoutBuilder();
+            renderExerciseStats();
+            renderWorkoutHistoryCards();
+        }
+
+        function renderExerciseStats() {
+            const selectedEx = document.getElementById('stat-exercise-select').value;
+            if (!selectedEx) return;
+
+            const dataPoints = [];
+            let allTimeMaxWeight = 0;
+            let allTimeMaxBwRatio = 0;
+            let allTimeMax1RM = 0;
+            let allTimeMax1RMBwRatio = 0;
+            let allTimeMaxVol = 0;
+
+            workouts.forEach(w => {
+                const matched = w.exercises.filter(e => e.name.toLowerCase() === selectedEx.toLowerCase());
+                if (matched.length > 0) {
+                    const bwOnDate = getBodyWeightForDate(w.date);
+                    let dayMaxWeight = 0;
+                    let dayMax1RM = 0;
+                    let dayVolume = 0;
+                    let setsSummary = [];
+
+                    matched.forEach(m => {
+                        m.sets.forEach(s => {
+                            const wgt = parseFloat(s.weight) || 0;
+                            const rps = parseInt(s.reps) || 0;
+                            if (wgt > dayMaxWeight) dayMaxWeight = wgt;
+                            
+                            const est1rm = rps === 1 ? wgt : Math.round(wgt * (1 + rps / 30) * 10) / 10;
+                            if (est1rm > dayMax1RM) dayMax1RM = est1rm;
+
+                            dayVolume += (wgt * rps);
+                            setsSummary.push(`${wgt}kg×${rps}`);
+                        });
+                    });
+
+                    const dayBwRatio = calcBwMultiplier(dayMaxWeight, bwOnDate, selectedEx);
+                    const day1RMBwRatio = calcBwMultiplier(dayMax1RM, bwOnDate, selectedEx);
+
+                    if (dayMaxWeight > allTimeMaxWeight) allTimeMaxWeight = dayMaxWeight;
+                    if (dayBwRatio > allTimeMaxBwRatio) allTimeMaxBwRatio = dayBwRatio;
+                    if (dayMax1RM > allTimeMax1RM) allTimeMax1RM = dayMax1RM;
+                    if (day1RMBwRatio > allTimeMax1RMBwRatio) allTimeMax1RMBwRatio = day1RMBwRatio;
+                    if (dayVolume > allTimeMaxVol) allTimeMaxVol = dayVolume;
+
+                    dataPoints.push({
+                        date: w.date,
+                        title: w.title,
+                        bodyWeight: bwOnDate,
+                        maxWeight: dayMaxWeight,
+                        bwRatio: dayBwRatio,
+                        est1RM: dayMax1RM,
+                        volume: dayVolume,
+                        setsText: setsSummary.join(', ')
+                    });
+                }
+            });
+
+            const latestDp = dataPoints[dataPoints.length - 1];
+
+            document.getElementById('stat-max-weight').textContent = `${allTimeMaxWeight} kg`;
+            document.getElementById('stat-max-bw-ratio').textContent = `${allTimeMaxBwRatio.toFixed(2)}× BW`;
+            document.getElementById('stat-est-1rm').textContent = `${allTimeMax1RM} kg`;
+            document.getElementById('stat-1rm-bw-ratio').textContent = `${allTimeMax1RMBwRatio.toFixed(2)}× BW (1RM)`;
+            
+            if (latestDp) {
+                document.getElementById('stat-latest-bw-ratio').textContent = `${latestDp.bwRatio.toFixed(2)}× BW`;
+                document.getElementById('stat-latest-bw-info').textContent = `${latestDp.maxWeight} kg při váze ${latestDp.bodyWeight.toFixed(1)} kg`;
+            }
+
+            document.getElementById('stat-max-vol').textContent = `${allTimeMaxVol} kg`;
+            document.getElementById('stat-sessions-count').textContent = `Odjeto tréninků: ${dataPoints.length}×`;
+
+            const labels = dataPoints.map(dp => {
+                const parts = dp.date.split('-');
+                return `${parts[2]}.${parts[1]}.`;
+            });
+            const values = dataPoints.map(dp => dp[currentChartMetric]);
+
+            const isRatioMetric = currentChartMetric === 'bwRatio';
+            const lineColor = isRatioMetric ? '#f43f5e' : '#10b981';
+            const fillColor = isRatioMetric ? 'rgba(244, 63, 94, 0.15)' : 'rgba(16, 185, 129, 0.15)';
+
+            const ctx = document.getElementById('exerciseChart').getContext('2d');
+            if (exerciseChartInstance) exerciseChartInstance.destroy();
+            exerciseChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: values,
+                        borderColor: lineColor,
+                        backgroundColor: fillColor,
+                        borderWidth: 2.5,
+                        pointBackgroundColor: lineColor,
+                        pointRadius: 4,
+                        fill: true,
+                        tension: 0.25
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            ticks: {
+                                color: '#94a3b8',
+                                callback: function(val) {
+                                    return isRatioMetric ? val.toFixed(2) + '× BW' : val + ' kg';
+                                }
+                            },
+                            grid: { color: '#334155' }
+                        },
+                        x: { ticks: { color: '#94a3b8' }, grid: { display: false } }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+
+            const logContainer = document.getElementById('exercise-history-log');
+            logContainer.innerHTML = dataPoints.slice().reverse().map(dp => `
+                <div class="flex flex-col sm:flex-row justify-between sm:items-center bg-slate-900/70 px-3 py-2 rounded-lg border border-slate-700/60 gap-1">
+                    <div>
+                        <span class="text-slate-400 font-mono mr-2">${dp.date}</span>
+                        <span class="text-slate-200 font-medium">${dp.setsText}</span>
+                        <span class="text-slate-500 text-[11px] ml-1">(BW: ${dp.bodyWeight.toFixed(1)} kg)</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-emerald-400 font-semibold">Max: ${dp.maxWeight} kg</span>
+                        <span class="bg-rose-950/90 text-rose-300 border border-rose-800/80 px-2 py-0.5 rounded font-mono font-bold text-[11px]">
+                            ${dp.bwRatio.toFixed(2)}× BW
+                        </span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderWorkoutHistoryCards() {
+            const container = document.getElementById('workout-history-container');
+            if (workouts.length === 0) {
+                container.innerHTML = `<p class="text-sm text-slate-500">Zatím nejsou uloženy žádné tréninky.</p>`;
+                return;
+            }
+
+            container.innerHTML = workouts.slice().reverse().map(w => {
+                const bwOnDate = getBodyWeightForDate(w.date);
+                let totalVol = 0;
+                const exListHtml = w.exercises.map(ex => {
+                    let topW = 0;
+                    const setsStr = ex.sets.map(s => {
+                        totalVol += (s.weight * s.reps);
+                        if (s.weight > topW) topW = s.weight;
+                        return `${s.weight}×${s.reps}`;
+                    }).join(', ');
+                    const topRatio = calcBwMultiplier(topW, bwOnDate, ex.name);
+
+                    return `<li class="flex justify-between items-center text-xs py-1.5 border-b border-slate-800 last:border-0 gap-2">
+                                <div>
+                                    <span class="text-slate-200 font-medium block">${ex.name}</span>
+                                    <span class="text-slate-400 font-mono text-[11px]">${setsStr}</span>
+                                </div>
+                                <span class="text-rose-400 font-mono font-semibold text-[11px] whitespace-nowrap">${topRatio.toFixed(2)}× BW</span>
+                            </li>`;
+                }).join('');
+
+                return `
+                    <div class="bg-slate-900/80 p-4 rounded-xl border border-slate-700 flex flex-col justify-between space-y-3">
+                        <div>
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <span class="text-xs text-emerald-400 font-mono">${w.date} • BW ${bwOnDate.toFixed(1)} kg</span>
+                                    <h3 class="font-bold text-white text-base">${w.title}</h3>
+                                </div>
+                                <button onclick="deleteWorkout(${w.id})" class="text-slate-500 hover:text-rose-400 text-xs px-1">✕</button>
+                            </div>
+                            <ul class="mt-3 space-y-0.5">${exListHtml}</ul>
+                        </div>
+                        <div class="pt-2 border-t border-slate-800 flex justify-between items-center text-xs text-slate-400">
+                            <span>Cviků: ${w.exercises.length}</span>
+                            <span class="text-sky-400 font-semibold">Celkový objem: ${totalVol} kg</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // ==========================================
+        // LOGIKA NÁVYKŮ A HEATMAPY
+        // ==========================================
+        function calculateActiveStreak(habit) {
+            let streak = 0;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            let checkDate = new Date(today);
+            if (!habit.history[formatDateKey(checkDate)]) {
+                checkDate.setDate(checkDate.getDate() - 1);
+            }
+            while (habit.history[formatDateKey(checkDate)]) {
+                streak++;
+                checkDate.setDate(checkDate.getDate() - 1);
+            }
+            return streak;
+        }
+
+        function toggleDate(habitId, dateKey) {
+            const habit = habits.find(h => h.id === habitId);
+            if (habit) {
+                if (habit.history[dateKey]) delete habit.history[dateKey];
+                else habit.history[dateKey] = true;
+                saveAll();
+                renderAllHabits();
+            }
+        }
+
+        function addHabit() {
+            const input = document.getElementById('new-habit-input');
+            const name = input.value.trim();
+            if (!name) return;
+            habits.push({ id: Date.now(), name: name, history: {} });
+            input.value = '';
+            saveAll();
+            updateFilterDropdown();
+            renderAllHabits();
+        }
+
+        function deleteHabit(habitId) {
+            if (confirm('Smazat tento denní cíl?')) {
+                habits = habits.filter(h => h.id !== habitId);
+                saveAll();
+                updateFilterDropdown();
+                renderAllHabits();
+            }
+        }
+
+        function changeWeek(dir) {
+            if (currentWeekOffset + dir > 0) return;
+            currentWeekOffset += dir;
+            renderAllHabits();
+        }
+
+        function resetToCurrentWeek() {
+            currentWeekOffset = 0;
+            renderAllHabits();
+        }
+
+        function updateFilterDropdown() {
+            const select = document.getElementById('heatmap-filter');
+            const currentVal = select.value;
+            select.innerHTML = '<option value="all">Všechny návyky dohromady</option>';
+            habits.forEach(h => {
+                const opt = document.createElement('option');
+                opt.value = h.id;
+                opt.textContent = h.name;
+                select.appendChild(opt);
+            });
+            if ([...select.options].some(o => o.value === currentVal)) select.value = currentVal;
+        }
+
+        function renderTableAndStats() {
+            const monday = getMonday(currentWeekOffset);
+            const weekDates = [];
+            for (let i = 0; i < 7; i++) {
+                const d = new Date(monday);
+                d.setDate(monday.getDate() + i);
+                weekDates.push(d);
+            }
+
+            const firstD = weekDates[0];
+            const lastD = weekDates[6];
+            document.getElementById('week-label').textContent = currentWeekOffset === 0
+                ? `Tento týden (${firstD.getDate()}.${firstD.getMonth()+1}. – ${lastD.getDate()}.${lastD.getMonth()+1}.)`
+                : `${firstD.getDate()}.${firstD.getMonth()+1}. – ${lastD.getDate()}.${lastD.getMonth()+1}.${lastD.getFullYear()}`;
+
+            const todayKey = formatDateKey(new Date());
+            const headerRow = document.getElementById('table-header-row');
+            let headerHtml = `<th class="p-4">Denní cíl</th>`;
+            weekDates.forEach((d, idx) => {
+                const isToday = formatDateKey(d) === todayKey;
+                headerHtml += `<th class="p-2 text-center ${isToday ? 'text-emerald-400 font-bold' : ''}">
+                    <div>${dayNames[idx]}</div>
+                    <div class="text-[10px] opacity-75">${d.getDate()}.${d.getMonth()+1}.</div>
+                </th>`;
+            });
+            headerHtml += `<th class="p-4 text-center">Série</th><th class="p-4 text-right">Akce</th>`;
+            headerRow.innerHTML = headerHtml;
+
+            const tbody = document.getElementById('habits-body');
+            tbody.innerHTML = '';
+            let weekChecks = 0;
+            let bestStreak = 0;
+
+            habits.forEach(habit => {
+                const streak = calculateActiveStreak(habit);
+                if (streak > bestStreak) bestStreak = streak;
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-700/30 transition';
+
+                let daysHtml = '';
+                weekDates.forEach(d => {
+                    const key = formatDateKey(d);
+                    const done = !!habit.history[key];
+                    if (done) weekChecks++;
+                    const btnClass = done 
+                        ? 'bg-emerald-500 text-slate-950 font-bold border-emerald-400' 
+                        : 'bg-slate-900 text-slate-500 border-slate-700 hover:border-slate-500';
+                    daysHtml += `<td class="p-2 text-center">
+                        <button onclick="toggleDate(${habit.id}, '${key}')" class="check-btn w-9 h-9 rounded-lg border ${btnClass} inline-flex items-center justify-center">
+                            ${done ? '✓' : ''}
+                        </button>
+                    </td>`;
+                });
+
+                tr.innerHTML = `
+                    <td class="p-4 font-medium text-slate-200">${habit.name}</td>
+                    ${daysHtml}
+                    <td class="p-4 text-center font-bold text-amber-400">${streak} 🔥</td>
+                    <td class="p-4 text-right">
+                        <button onclick="deleteHabit(${habit.id})" class="text-slate-500 hover:text-rose-400 px-2 py-1">✕</button>
+                    </td>`;
+                tbody.appendChild(tr);
+            });
+
+            const totalPossible = habits.length * 7;
+            document.getElementById('total-rate').textContent = `${totalPossible > 0 ? Math.round((weekChecks / totalPossible) * 100) : 0} %`;
+            document.getElementById('best-streak').textContent = `${bestStreak} 🔥`;
+            updateHabitCharts(weekDates);
+        }
+
+        function renderHeatmap() {
+            const grid = document.getElementById('heatmap-grid');
+            const monthsContainer = document.getElementById('heatmap-months');
+            const filterVal = document.getElementById('heatmap-filter').value;
+            grid.innerHTML = '';
+            monthsContainer.innerHTML = '';
+
+            const currentMonday = getMonday(0);
+            const startMonday = new Date(currentMonday);
+            startMonday.setDate(currentMonday.getDate() - (51 * 7));
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const todayKey = formatDateKey(today);
+
+            let totalCompletionsYear = 0;
+            let lastMonth = -1;
+            const filteredHabits = filterVal === 'all' ? habits : habits.filter(h => String(h.id) === String(filterVal));
+            const maxPossiblePerDay = Math.max(filteredHabits.length, 1);
+
+            for (let w = 0; w < 52; w++) {
+                const weekStart = new Date(startMonday);
+                weekStart.setDate(startMonday.getDate() + (w * 7));
+                const m = weekStart.getMonth();
+                if (m !== lastMonth) {
+                    const monthSpan = document.createElement('span');
+                    monthSpan.textContent = monthNames[m];
+                    monthSpan.style.position = 'absolute';
+                    monthSpan.style.left = `${(w / 52) * 100}%`;
+                    monthsContainer.appendChild(monthSpan);
+                    lastMonth = m;
+                }
+
+                for (let d = 0; d < 7; d++) {
+                    const cellDate = new Date(weekStart);
+                    cellDate.setDate(weekStart.getDate() + d);
+                    const key = formatDateKey(cellDate);
+                    const isFuture = cellDate > today;
+
+                    let completedCount = 0;
+                    filteredHabits.forEach(h => { if (h.history[key]) completedCount++; });
+                    if (!isFuture) totalCompletionsYear += completedCount;
+
+                    const ratio = completedCount / maxPossiblePerDay;
+                    let colorClass = 'bg-slate-900 border border-slate-700/60';
+                    if (isFuture) colorClass = 'bg-slate-900/30 border border-slate-800/40 opacity-40';
+                    else if (completedCount > 0) {
+                        if (ratio <= 0.34) colorClass = 'bg-emerald-950 border border-emerald-800';
+                        else if (ratio <= 0.67) colorClass = 'bg-emerald-700';
+                        else if (ratio < 1) colorClass = 'bg-emerald-500';
+                        else colorClass = 'bg-emerald-400';
+                    }
+
+                    const cell = document.createElement('div');
+                    cell.className = `w-3 h-3 rounded-[2px] ${colorClass} ${key === todayKey ? 'ring-1 ring-amber-400' : ''} transition-transform hover:scale-125`;
+                    cell.title = `${cellDate.getDate()}.${cellDate.getMonth()+1}.${cellDate.getFullYear()}: splněno ${completedCount}/${filteredHabits.length}`;
+                    grid.appendChild(cell);
+                }
+            }
+
+            let allHabitsYearTotal = 0;
+            habits.forEach(h => { allHabitsYearTotal += Object.keys(h.history).length; });
+            document.getElementById('yearly-total').textContent = `${allHabitsYearTotal} ✓`;
+            document.getElementById('heatmap-summary-text').textContent = `Za posledních 52 týdnů splněno ve vybraném filtru: ${totalCompletionsYear}×`;
+        }
+
+        function updateHabitCharts(weekDates) {
+            const dailyCounts = weekDates.map(d => {
+                const key = formatDateKey(d);
+                return habits.reduce((acc, h) => acc + (h.history[key] ? 1 : 0), 0);
+            });
+            const habitNames = habits.map(h => h.name.length > 20 ? h.name.substring(0, 20) + '…' : h.name);
+            const habitStreaks = habits.map(h => calculateActiveStreak(h));
+
+            const ctxDaily = document.getElementById('dailyChart').getContext('2d');
+            if (dailyChartInstance) dailyChartInstance.destroy();
+            dailyChartInstance = new Chart(ctxDaily, {
+                type: 'bar',
+                data: {
+                    labels: dayNames,
+                    datasets: [{ data: dailyCounts, backgroundColor: 'rgba(16, 185, 129, 0.7)', borderColor: '#10b981', borderWidth: 1, borderRadius: 6 }]
+                },
+                options: {
+                    scales: {
+                        y: { beginAtZero: true, max: Math.max(habits.length, 1), ticks: { stepSize: 1, color: '#94a3b8' }, grid: { color: '#334155' } },
+                        x: { ticks: { color: '#94a3b8' }, grid: { display: false } }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+
+            const ctxStreak = document.getElementById('streakChart').getContext('2d');
+            if (streakChartInstance) streakChartInstance.destroy();
+            streakChartInstance = new Chart(ctxStreak, {
+                type: 'bar',
+                data: {
+                    labels: habitNames,
+                    datasets: [{ data: habitStreaks, backgroundColor: 'rgba(245, 158, 11, 0.7)', borderColor: '#f59e0b', borderWidth: 1, borderRadius: 6 }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    scales: {
+                        x: { beginAtZero: true, suggestedMax: 7, ticks: { stepSize: 1, color: '#94a3b8' }, grid: { color: '#334155' } },
+                        y: { ticks: { color: '#94a3b8' }, grid: { display: false } }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+
+        function exportAllData() {
+            const payload = { habits, workouts, bodyWeights, exportedAt: new Date().toISOString() };
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `dashboard_zaloha_${formatDateKey(new Date())}.json`;
+            a.click();
+        }
+
+        function importAllData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (data.habits && data.workouts) {
+                        habits = data.habits;
+                        workouts = data.workouts;
+                        if (data.bodyWeights) bodyWeights = data.bodyWeights;
+                        saveAll();
+                        updateFilterDropdown();
+                        renderAllHabits();
+                        renderWorkoutSection();
+                        renderBodyWeightSection();
+                        alert('Záloha byla úspěšně nahrána!');
+                    } else {
+                        alert('Neplatný formát souboru.');
+                    }
+                } catch (err) {
+                    alert('Chyba při čtení souboru JSON.');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function renderAllHabits() {
+            renderTableAndStats();
+            renderHeatmap();
+        }
+
+        document.getElementById('wo-date').addEventListener('change', renderWorkoutBuilder);
+
+        // Inicializace při spuštění
+        updateFilterDropdown();
+        initWorkoutForm();
+        initBodyWeightForm();
+        renderAllHabits();
+    </script>
+</body>
+</html>
